@@ -83,10 +83,43 @@ class MLXWhisperModel(ASRModel):
         return result.get("text", "").strip()
 
 
+class MLXSenseVoiceModel(ASRModel):
+    def __init__(self, model_size: str = "mlx-community/SenseVoiceSmall"):
+        """
+        Initialize MLX-SenseVoice model.
+        
+        Args:
+            model_size: HuggingFace repo ID, e.g., 'mlx-community/SenseVoiceSmall'
+        """
+        print(f"Loading MLX-SenseVoice model: {model_size}...")
+        self.model_size = model_size
+        self.model = None
+
+    def transcribe(self, audio_data: np.ndarray) -> str:
+        """
+        Transcribe audio array.
+        
+        Args:
+            audio_data: np.ndarray of shape (N,) containing float32 samples at 16000 Hz.
+        """
+        if audio_data.size == 0:
+            return ""
+            
+        from mlx_audio.stt import load
+        if self.model is None:
+            self.model = load(self.model_size)
+            
+        result = self.model.generate(audio_data, language="auto")
+        return result.text.strip()
+
+
 def get_model(model_type: str = "whisper", **kwargs) -> ASRModel:
     if model_type.lower() == "whisper":
         return FasterWhisperModel(**kwargs)
     elif model_type.lower() == "mlx-whisper":
         return MLXWhisperModel(**kwargs)
+    elif model_type.lower() in ["mlx-sensevoice", "sensevoice"]:
+        return MLXSenseVoiceModel(**kwargs)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
+

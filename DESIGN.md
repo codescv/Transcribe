@@ -25,16 +25,17 @@ graph TD
 
 ### 2. ASR Model (`src/transcribe/model/`)
 *   **Options**:
-    1.  **SenseVoice-Small** (Alibaba FunASR):
-        *   *Pros*: Extremely fast (non-autoregressive), high accuracy for Chinese/English/Cantonese, low latency.
-        *   *Cons*: Slightly newer framework, setup might be slightly heavier than whisper.cpp.
+    1.  **SenseVoice-Small** (via `mlx-audio`):
+        *   *Pros*: Extremely fast (non-autoregressive), high accuracy for Chinese/English/Cantonese, low latency, fully optimized for Apple Silicon via MLX.
+        *   *Cons*: None for macOS M-chips.
     2.  **Whisper (Faster-Whisper)**:
         *   *Pros*: Standard, very reliable, easy Python integration.
         *   *Cons*: Slower inference for larger models compared to SenseVoice.
     3.  **MLX-Whisper (Apple Silicon)**:
         *   *Pros*: Highly optimized for Apple Silicon (Metal), support for large models like `Whisper Large-v3-Turbo`, excellent for Chinese-English mixed audio.
         *   *Cons*: macOS specific, slightly heavier memory footprint for large models.
-*   **Recommendation**: Support multiple via a unified Interface, defaulting to **Faster-Whisper** for stability, and **MLX-Whisper** for performance on Apple Silicon with large models.
+*   **Recommendation**: Support multiple via a unified Interface. **SenseVoice-Small** is recommended for general speed and low latency, and **MLX-Whisper** for largest capacity with large models.
+
 
 
 ### 3. CLI & Orchestration (`src/transcribe/cli.py`)

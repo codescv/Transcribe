@@ -85,8 +85,8 @@ def transcription_worker(recorder, model_type: str, model_type_size: str, output
 
 @app.command()
 def start(
-    model_type: str = typer.Option("whisper", help="Model type: whisper, mlx-whisper"),
-    model_size: str = typer.Option("base", help="Size of the ASR model (e.g., base, small for whisper; repo ID for mlx-whisper)"),
+    model_type: str = typer.Option("whisper", help="Model type: whisper, mlx-whisper, mlx-sensevoice"),
+    model_size: str = typer.Option("base", help="Size of the ASR model (e.g., base, small for whisper; repo ID for mlx-whisper/mlx-sensevoice)"),
     output_file: str = typer.Option("transcription.txt", help="Output file path"),
     interval: float = typer.Option(5.0, help="Acculumation interval in seconds"),
     save_audio: str = typer.Option(None, help="Save raw audio to specified file"),
@@ -103,6 +103,8 @@ def start(
     # Handle default model size for mlx-whisper
     if model_type.lower() == "mlx-whisper" and model_size == "base":
         model_size = "mlx-community/whisper-large-v3-turbo"
+    elif model_type.lower() == "mlx-sensevoice" and model_size == "base":
+        model_size = "mlx-community/SenseVoiceSmall"
 
     # 1. Initialize & Start Recorder FIRST (avoid Metal conflict during SCK setup)
     recorder = ScreenAudioRecorder.alloc().init()
