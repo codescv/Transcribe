@@ -103,7 +103,7 @@ def start(
     output_file: str = typer.Option("transcription.txt", help="Output file path"),
     interval: float = typer.Option(5.0, help="Acculumation interval in seconds"),
     save_audio: str = typer.Option(None, help="Save raw audio to specified file"),
-    summary: bool = typer.Option(False, help="Generate summary using Gemini at the end"),
+    summary: str = typer.Option(None, help="Save summary using Gemini to this file path"),
     timestamp: bool = typer.Option(False, "--timestamp/--no-timestamp", help="Include timestamp in output file"),
 ):
     """
@@ -160,7 +160,7 @@ def start(
                         print("\n=== Summary ===")
                         print(summary_text)
                         
-                        summary_file = f"{os.path.splitext(output_file)[0]}_summary.txt"
+                        summary_file = summary
                         with open(summary_file, "w", encoding="utf-8") as sf:
                             sf.write(summary_text)
                         print(f"Summary saved to {summary_file}")
