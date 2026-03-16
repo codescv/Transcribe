@@ -12,7 +12,7 @@ from transcribe.text_utils import remove_overlap
 
 
 app = typer.Typer()
-def transcription_worker(recorder, model_type: str, model_type_size: str, output_file: str, interval: float = 5.0, save_audio: str = None):
+def transcription_worker(recorder, model_type: str, model_type_size: str, output_file: str, interval: float = 5.0, save_audio: str = None, include_timestamp: bool = True):
     """
     Background worker that reads audio from recorder queue, aggregates, and transcribes.
     """
@@ -63,7 +63,10 @@ def transcription_worker(recorder, model_type: str, model_type_size: str, output
                             clean_text = remove_overlap(prev_text, text)
                             if clean_text:
                                 print(f"[Captured]: {clean_text}")
-                                f.write(f"{time.strftime('%H:%M:%S')} - {clean_text}\n")
+                                if include_timestamp:
+                                    f.write(f"{time.strftime('%H:%M:%S')} - {clean_text}\n")
+                                else:
+                                    f.write(f"{clean_text}\n")
                                 f.flush()
                                 prev_text = text
                         else:
@@ -79,9 +82,14 @@ def transcription_worker(recorder, model_type: str, model_type_size: str, output
                 try:
                     text = model.transcribe(speech_segment)
                     if text:
-                        print(f"[Captured]: {text}")
-                        f.write(f"{time.strftime('%H:%M:%S')} - {text}\n")
-                        f.flush()
+                        clean_text = remove_overlap(prev_text, text)
+                        if clean_text:
+                            print(f"[Captured]: {clean_text}")
+                            if include_timestamp:
+                                f.write(f"{time.strftime('%H:%M:%S')} - {clean_text}\n")
+                            else:
+                                f.write(f"{clean_text}\n")
+                            f.flush()
                 except Exception as e:
                     print(f"Error during final transcription: {e}")
 
@@ -96,6 +104,7 @@ def start(
     interval: float = typer.Option(5.0, help="Acculumation interval in seconds"),
     save_audio: str = typer.Option(None, help="Save raw audio to specified file"),
     summary: bool = typer.Option(False, help="Generate summary using Gemini at the end"),
+    timestamp: bool = typer.Option(False, "--timestamp/--no-timestamp", help="Include timestamp in output file"),
 ):
     """
     Start capturing screen audio and transcribing.
@@ -119,7 +128,7 @@ def start(
     # 2. Start Worker (Loads model inside on background thread)
     worker_thread = threading.Thread(
         target=transcription_worker, 
-        args=(recorder, model_type, model_size, output_file, interval, save_audio),
+        args=(recorder, model_type, model_size, output_file, interval, save_audio, timestamp),
         daemon=True
     )
     worker_thread.start()
