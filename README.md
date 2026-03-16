@@ -29,7 +29,8 @@ uv run transcribe start
 ```
 
 ### Options
-- `--model-size`: Choose from `tiny`, `base` (default), `small`. Smaller is faster, larger is more accurate.
+- `--model-type`: Choose model backend: `whisper` (default) or `mlx-whisper` (optimized for Apple Silicon).
+- `--model-size`: Size of the model (e.g., `tiny`, `base`, `small` for whisper; HuggingFace repo ID for `mlx-whisper`, defaults to `mlx-community/whisper-large-v3-turbo`).
 - `--output-file`: Path to save transcription (default: `transcription.txt`).
 - `--interval`: Buffer duration in seconds before driving inference (default: `5.0`).
 

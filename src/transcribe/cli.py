@@ -58,7 +58,8 @@ def transcription_worker(recorder, model, output_file: str, interval: float = 5.
 
 @app.command()
 def start(
-    model_size: str = typer.Option("base", help="Size of the ASR model: tiny, base, small"),
+    model_type: str = typer.Option("whisper", help="Model type: whisper, mlx-whisper"),
+    model_size: str = typer.Option("base", help="Size of the ASR model (e.g., base, small for whisper; repo ID for mlx-whisper)"),
     output_file: str = typer.Option("transcription.txt", help="Output file path"),
     interval: float = typer.Option(5.0, help="Acculumation interval in seconds"),
 ):
@@ -73,8 +74,12 @@ def start(
     print(f"Output: {output_file}")
     print("Press Ctrl+C to stop.")
 
+    # Handle default model size for mlx-whisper
+    if model_type.lower() == "mlx-whisper" and model_size == "base":
+        model_size = "mlx-community/whisper-large-v3-turbo"
+
     # Load Model
-    model = get_model(model_type="whisper", model_size=model_size)
+    model = get_model(model_type=model_type, model_size=model_size)
 
     # Initialize Recorder
     recorder = ScreenAudioRecorder.alloc().init()

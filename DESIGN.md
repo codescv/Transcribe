@@ -31,13 +31,18 @@ graph TD
     2.  **Whisper (Faster-Whisper)**:
         *   *Pros*: Standard, very reliable, easy Python integration.
         *   *Cons*: Slower inference for larger models compared to SenseVoice.
-*   **Recommendation**: Support both via a unified Interface, defaulting to **SenseVoice-Small** for its superior speed and Chinese optimization, with **Faster-Whisper** as a fallback.
+    3.  **MLX-Whisper (Apple Silicon)**:
+        *   *Pros*: Highly optimized for Apple Silicon (Metal), support for large models like `Whisper Large-v3-Turbo`, excellent for Chinese-English mixed audio.
+        *   *Cons*: macOS specific, slightly heavier memory footprint for large models.
+*   **Recommendation**: Support multiple via a unified Interface, defaulting to **Faster-Whisper** for stability, and **MLX-Whisper** for performance on Apple Silicon with large models.
+
 
 ### 3. CLI & Orchestration (`src/transcribe/cli.py`)
 *   **Framework**: `typer`.
 *   **Features**:
     *   `transcribe start`: Start monitoring and transcribing.
-    *   Options: `--model-type [sensevoice|whisper]`, `--output-file PATH`, `--language [zh|en|auto]`.
+    *   Options: `--model-type [whisper|mlx-whisper]`, `--model-size SIZE`, `--output-file PATH`, `--interval INTERVAL`.
+
 
 ## Data Flow
 1.  User runs `transcribe start`.
