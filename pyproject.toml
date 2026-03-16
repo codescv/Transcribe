@@ -1,0 +1,29 @@
+[project]
+name = "transcribe"
+version = "0.1.0"
+description = "Screen audio transcriber"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.12.0",
+    "pyobjc-framework-ScreenCaptureKit>=10.0",
+    "faster-whisper>=1.0.0",
+    "numpy>=2.0.0",
+]
+
+[project.scripts]
+transcribe = "transcribe.cli:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+
