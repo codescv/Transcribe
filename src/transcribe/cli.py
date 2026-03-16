@@ -4,14 +4,28 @@ import threading
 import numpy as np
 from queue import Empty
 import os
+from Foundation import NSRunLoop, NSDate
+from transcribe.model.model import get_model
 
 app = typer.Typer()
-
-def transcription_worker(recorder, model, output_file: str, interval: float = 5.0):
+def transcription_worker(recorder, model_type: str, model_type_size: str, output_file: str, interval: float = 5.0):
     """
     Background worker that reads audio from recorder queue, aggregates, and transcribes.
     """
     print(f"Transcription worker started. Interval: {interval}s")
+    
+    # Load Model (Load in background to keep main thread completely free for SCK)
+    print(f"Loading Model {model_type_size} in background...")
+    model = get_model(model_type=model_type, model_size=model_type_size)
+    print("Model loaded.")
+
+    print("Waiting for recording to start...")
+    recorder.start_event.wait(timeout=10.0)
+    if not recorder.is_recording:
+        print("Error: Recording failed to start within timeout.")
+        os._exit(1)
+        
+    print("Recording confirmed started. Beginning transcription loop.")
     buffer = b''
     last_transcribe_time = time.time()
     
@@ -78,27 +92,22 @@ def start(
     if model_type.lower() == "mlx-whisper" and model_size == "base":
         model_size = "mlx-community/whisper-large-v3-turbo"
 
-    # Load Model
-    model = get_model(model_type=model_type, model_size=model_size)
-
-    # Initialize Recorder
+    # 1. Initialize & Start Recorder FIRST (avoid Metal conflict during SCK setup)
     recorder = ScreenAudioRecorder.alloc().init()
-    
-    # Start Recorder
     recorder.start()
-    
-    # Start Worker
+
+    # 2. Start Worker (Loads model inside on background thread)
     worker_thread = threading.Thread(
         target=transcription_worker, 
-        args=(recorder, model, output_file, interval),
+        args=(recorder, model_type, model_size, output_file, interval),
         daemon=True
     )
     worker_thread.start()
 
-    from Foundation import NSRunLoop, NSDate
     loop = NSRunLoop.currentRunLoop()
 
     try:
+        print("[DEBUG] Entering main run loop")
         while True:
             # Run loop to process events (e.g. main thread dispatch)
             loop.runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(1.0))

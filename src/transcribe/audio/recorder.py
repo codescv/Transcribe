@@ -14,6 +14,7 @@ import os
 
 class AudioStreamOutput(NSObject):
     """Delegate for SCStream to receive audio sample buffers."""
+    __pyobjc_protocols__ = [objc.protocolNamed('SCStreamOutput')] if hasattr(objc, 'protocolNamed') else []
     
     def init(self):
         self = objc.super(AudioStreamOutput, self).init()
@@ -23,8 +24,8 @@ class AudioStreamOutput(NSObject):
         self.running = False
         return self
 
-    # Explicit signature: void return, self, selector, stream (id), sampleBuffer (id), type (NSInteger)
-    @objc.signature(b'v@:@@q')
+    # Explicit signature: void return, self, selector, stream (id), sampleBuffer (CMSampleBufferRef), type (NSInteger)
+    @objc.signature(b'v@:@^{opaqueCMSampleBuffer=}q')
     def stream_didOutputSampleBuffer_ofType_(self, stream, sampleBuffer, type):
         if not self.running:
             return
@@ -63,6 +64,7 @@ class ScreenAudioRecorder(NSObject):
 
     def setupStream_(self, content):
         try:
+            print("[DEBUG] setupStream_ entered")
             # Create stream configuration
             config = sck.SCStreamConfiguration.alloc().init()
             # Configure for audio only
@@ -81,18 +83,24 @@ class ScreenAudioRecorder(NSObject):
             
             self.stream = sck.SCStream.alloc().initWithFilter_configuration_delegate_(filter, config, self.delegate)
             
+            print("[DEBUG] Adding stream output...")
             status = self.stream.addStreamOutput_type_sampleHandlerQueue_error_(self.delegate, 1, None, None)
             success = status[0] if isinstance(status, tuple) else status
+            print(f"[DEBUG] addStreamOutput status: {status}, success: {success}")
             if success:
                 self.delegate.running = True
                 def completion_handler(err):
+                    print(f"[DEBUG] completion_handler called with err: {err}")
                     if err:
                         print(f"Start capture err: {err}")
                     else:
                         self.is_recording = True
                         print("Recording started...")
                     self.start_event.set()
-                self.stream.startCaptureWithCompletionHandler_(completion_handler)
+                print("[DEBUG] Calling startCaptureWithCompletionHandler_")
+                # Keep alive to prevent garbage collection
+                self._start_completion_handler = completion_handler
+                self.stream.startCaptureWithCompletionHandler_(self._start_completion_handler)
             else:
                 print("Failed to add stream output.")
                 self.start_event.set()
@@ -108,25 +116,20 @@ class ScreenAudioRecorder(NSObject):
         
         # Setup stream
         def handle_content(content, error):
+            print(f"[DEBUG] handle_content called. Error: {error}")
             if error:
                 print(f"Error getting content: {error}")
                 self.start_event.set()
                 return
             
+            print("[DEBUG] Dispatching setupStream_ to main thread")
             # Dispatch to main thread
             self.performSelectorOnMainThread_withObject_waitUntilDone_("setupStream:", content, False)
 
-        sck.SCShareableContent.getShareableContentWithCompletionHandler_(handle_content)
-        
-        from Foundation import NSRunLoop, NSDate
-        loop = NSRunLoop.currentRunLoop()
-        timeout_time = time.time() + 10.0
-        while not self.start_event.is_set() and time.time() < timeout_time:
-            # Run loop for short burst to process performSelector
-            loop.runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.1))
-        
-        if not self.is_recording:
-            print("Warning: Recording might not have started correctly (timeout or error)")
+        print("[DEBUG] Requesting shareable content...")
+        self._handle_content_handler = handle_content
+        sck.SCShareableContent.getShareableContentWithCompletionHandler_(self._handle_content_handler)
+        print("[DEBUG] start() async chain initiated")
 
     def stop(self):
         if not self.is_recording:
