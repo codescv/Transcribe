@@ -104,7 +104,7 @@ class VADIterator:
 import urllib.request
 
 class VADTracker:
-    def __init__(self, model_path=None, threshold=0.5, min_silence_ms=500, max_duration_s=15.0):
+    def __init__(self, model_path=None, threshold=0.5, min_silence_ms=500, max_duration_s=15.0, speech_pad_ms=250, overlap_s=1.0):
         if model_path is None:
              cache_dir = os.path.expanduser("~/.cache/transcribe")
              os.makedirs(cache_dir, exist_ok=True)
@@ -117,10 +117,11 @@ class VADTracker:
                   print("[VAD] Download complete.")
                   
         self.model = OnnxWrapper(model_path)
-        self.iterator = VADIterator(self.model, threshold=threshold, min_silence_duration_ms=min_silence_ms)
+        self.iterator = VADIterator(self.model, threshold=threshold, min_silence_duration_ms=min_silence_ms, speech_pad_ms=speech_pad_ms)
         self.buffer = []
         self.is_speaking = False
         self.max_duration_s = max_duration_s
+        self.overlap_s = overlap_s
         self.samples_recorded = 0
         
     def process_frame(self, frame_np):
@@ -147,8 +148,15 @@ class VADTracker:
               
               if self.samples_recorded >= 16000 * self.max_duration_s:
                    seg = np.concatenate(self.buffer)
-                   self.buffer = []
-                   self.samples_recorded = 0
+                   
+                   # Keep overlap for next segment
+                   overlap_samples = int(16000 * self.overlap_s)
+                   num_frames = overlap_samples // 512
+                   if num_frames > 0 and len(self.buffer) > num_frames:
+                       self.buffer = self.buffer[-num_frames:]
+                   # NOTE: if we keep the buffer, we are still "speaking"
+                   # self.is_speaking remains True
+                   self.samples_recorded = len(self.buffer) * 512
                    return seg
                    
          return None

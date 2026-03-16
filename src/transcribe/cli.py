@@ -8,6 +8,7 @@ from Foundation import NSRunLoop, NSDate
 from transcribe.model.model import get_model
 from transcribe.audio.vad import VADTracker
 from transcribe.audio.recorder import ScreenAudioRecorder
+from transcribe.text_utils import remove_overlap
 
 
 app = typer.Typer()
@@ -32,6 +33,7 @@ def transcription_worker(recorder, model_type: str, model_type_size: str, output
 
     tracker = VADTracker(max_duration_s=interval) # Use interval as max duration limit
     accumulated_np = np.array([], dtype=np.float32)
+    prev_text = ""
     
     # Open file for appending
     with open(output_file, "a", encoding="utf-8") as f:
@@ -58,9 +60,12 @@ def transcription_worker(recorder, model_type: str, model_type_size: str, output
                         # Run ASR
                         text = model.transcribe(speech_segment)
                         if text:
-                            print(f"[Captured]: {text}")
-                            f.write(f"{time.strftime('%H:%M:%S')} - {text}\n")
-                            f.flush()
+                            clean_text = remove_overlap(prev_text, text)
+                            if clean_text:
+                                print(f"[Captured]: {clean_text}")
+                                f.write(f"{time.strftime('%H:%M:%S')} - {clean_text}\n")
+                                f.flush()
+                                prev_text = text
                         else:
                             print('no text')
                     except Exception as e:
@@ -90,6 +95,7 @@ def start(
     output_file: str = typer.Option("transcription.txt", help="Output file path"),
     interval: float = typer.Option(5.0, help="Acculumation interval in seconds"),
     save_audio: str = typer.Option(None, help="Save raw audio to specified file"),
+    summary: bool = typer.Option(False, help="Generate summary using Gemini at the end"),
 ):
     """
     Start capturing screen audio and transcribing.
@@ -131,6 +137,30 @@ def start(
         # Wait for worker to finish processing remaining queue
         worker_thread.join(timeout=3)
         print("Done.")
+
+        if summary:
+            print("Generating summary...")
+            try:
+                from transcribe.summarize import generate_summary
+                if os.path.exists(output_file):
+                    with open(output_file, "r", encoding="utf-8") as f:
+                        text_content = f.read()
+                    
+                    if text_content.strip():
+                        summary_text = generate_summary(text_content)
+                        print("\n=== Summary ===")
+                        print(summary_text)
+                        
+                        summary_file = f"{os.path.splitext(output_file)[0]}_summary.txt"
+                        with open(summary_file, "w", encoding="utf-8") as sf:
+                            sf.write(summary_text)
+                        print(f"Summary saved to {summary_file}")
+                    else:
+                        print("Transcription file is empty. Skipping summary.")
+                else:
+                    print("Transcription file not found. Skipping summary.")
+            except Exception as e:
+                print(f"Failed to generate summary: {e}")
 
 if __name__ == "__main__":
     app()
