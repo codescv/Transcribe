@@ -69,3 +69,45 @@ def generate_summary(text: str) -> str:
 
     except Exception as e:
         return f"Error generating summary: {e}"
+
+def generate_incremental_summary(prev_summary: str, incremental_text: str) -> str:
+    """
+    Update the previous summary with the new transcription segment using Gemini API.
+    """
+    if not incremental_text.strip():
+        return prev_summary # No change
+        
+    try:
+        client = genai.Client()
+        
+        if not prev_summary:
+            # First time, do a normal summary
+            prompt = (
+                "You are an expert summarizer. Please provide a concise summary of the following transcription segment. "
+                "Identify the main topics discussed and highlight any key points or actions. "
+                "Use clear headings and bullet points where appropriate.\n\n"
+                "**Important**: The output language must be the same as the transcription.\n"
+                f"Transcription Segment:\n{incremental_text}"
+            )
+        else:
+            prompt = (
+                "You are an expert summarizer. Below is a previous summary of a conversation and a new segment of transcription that occurred after it. "
+                "Please update and consolidate them into a single, cohesive overall summary that accurately reflects the full discussion to this point. "
+                "Organize by main topics or chronological order of topics discussed. "
+                "Use clear headings and bullet points.\n\n"
+                "**Important**: The output language must be the same as the inputs.\n\n"
+                "=== Previous Summary ===\n"
+                f"{prev_summary}\n\n"
+                "=== New Transcription snippet ===\n"
+                f"{incremental_text}"
+            )
+            
+        # Use simple generate content
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        return response.text
+
+    except Exception as e:
+        return f"{prev_summary}\n\n[Error updating summary: {e}]" # Return previous with error note

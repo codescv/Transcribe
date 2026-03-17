@@ -12,11 +12,10 @@ def test_start_help():
     assert result.exit_code == 0
     assert "Start capturing screen audio and transcribing" in result.output
 
-def test_start_command_loads():
-    """
-    Test that the start command can be invoked (it will fail on recording start in test env, 
-    but we can verify execution flow or mocking).
-    """
-    # We can mock the recorder and model to avoid starting real capture
-    # but for a basic check, we just verify the command structure is correct.
-    pass
+def test_start_continuous_summary_options():
+    """Test that continuous summarization options are listed in help."""
+    # Typer lists options for the command when calling [command] --help
+    result = runner.invoke(app, ["start", "--help"])
+    assert result.exit_code == 0
+    assert "--summary-output" in result.output
+    assert "--summary-interval" in result.output
