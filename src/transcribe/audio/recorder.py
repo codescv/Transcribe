@@ -144,3 +144,65 @@ class ScreenAudioRecorder(NSObject):
         if not self.delegate.queue.empty():
             return self.delegate.queue.get()
         return None
+
+class MicAudioRecorder:
+    def __init__(self):
+        # Create a dummy delegate with a queue to match ScreenAudioRecorder structure
+        class DummyDelegate:
+            def __init__(self):
+                self.queue = Queue()
+        self.delegate = DummyDelegate()
+        self.is_recording = False
+        self.start_event = threading.Event()
+        self.stream = None
+
+    def start(self):
+        if self.is_recording:
+            return
+            
+        import sounddevice as sd
+        
+        def callback(indata, frames, time_info, status):
+            if status:
+                print(f"[Mic] Status: {status}")
+            # indata is a numpy array of shape (frames, channels)
+            if np.any(indata):
+                # Put raw bytes into queue to match ScreenCaptureKit output
+                self.delegate.queue.put(indata.tobytes())
+
+        try:
+            # 16000 Hz, 1 channel, float32 matches SCK configuration
+            self.stream = sd.InputStream(samplerate=16000, channels=1, dtype='float32', callback=callback)
+            self.stream.start()
+            self.is_recording = True
+            print("Microphone recording started...")
+        except Exception as e:
+            print(f"Error starting microphone recording: {e}")
+        finally:
+            self.start_event.set()
+
+    def stop(self):
+        if not self.is_recording:
+            return
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+        self.is_recording = False
+        print("Microphone recording stopped.")
+
+    def get_audio_data(self):
+        if not self.delegate.queue.empty():
+            return self.delegate.queue.get()
+        return None
+
+def get_recorder(source_type: str = "system"):
+    """
+    Factory to get the correct audio recorder.
+    source_type: 'system' or 'output' for ScreenCaptureKit,
+                 'mic' or 'input' for microphone via sounddevice.
+    """
+    if source_type.lower() in ["mic", "input"]:
+        return MicAudioRecorder()
+    else:
+        return ScreenAudioRecorder.alloc().init()

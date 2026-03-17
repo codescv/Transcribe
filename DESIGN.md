@@ -7,21 +7,22 @@ The application monitors macOS system audio and transcribes it in real-time or n
 
 ```mermaid
 graph TD
-    SystemAudio[macOS System Audio] -->|ScreenCaptureKit| Recorder[Audio Recorder]
-    Recorder -->|PCM Audio Chunk| Buffer[Audio Buffer / Queue]
+    SystemAudio[macOS System Audio] -->|ScreenCaptureKit| ScreenRecorder[ScreenAudioRecorder]
+    MicAudio[Microphone Audio] -->|sounddevice| MicRecorder[MicAudioRecorder]
+    ScreenRecorder -->|PCM Audio Chunk| Buffer[Audio Buffer / Queue]
+    MicRecorder -->|PCM Audio Chunk| Buffer[Audio Buffer / Queue]
     Buffer -->|Buffered Audio| ASR[ASR Model Inferencer]
     ASR -->|Text Segment| Formatter[Text Formatter]
     Formatter -->|Formatted Text| Output[Text File / Console]
 ```
 
 ### 1. Audio Capture (`src/transcribe/audio/`)
-*   **Method**: `ScreenCaptureKit` (via `pyobjc-framework-ScreenCaptureKit`).
-*   **Why**: Allows capturing internal system audio without requiring virtual audio drivers (like BlackHole), providing a seamless user experience.
-*   **Implementation**:
-    *   Create an `SCStream` capturing audio.
-    *   Implement `SCStreamOutput` delegate to receive `CMSampleBuffer`.
-    *   Extract PCM data and convert to appropriate format (e.g., 16kHz, 16-bit, Mono) for ASR.
-    *   Push data to a thread-safe queue.
+*   **Method**: `ScreenCaptureKit` or `sounddevice`.
+*   **Classes**:
+    *   `ScreenAudioRecorder`: Captures internal system audio using `ScreenCaptureKit` without requiring virtual audio drivers (like BlackHole).
+    *   `MicAudioRecorder`: Captures microphone audio using `sounddevice` (PortAudio), providing support for speaking into the machine.
+*   **Factory**: `get_recorder(source_type)` handles instantiation based on the user's choice.
+*   **Data output**: Both produce 16kHz, float32, Mono PCM data streams into a thread-safe Queue.
 
 ### 2. ASR Model (`src/transcribe/model/`)
 *   **Options**:

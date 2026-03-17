@@ -33,6 +33,7 @@ uv run transcribe start
 - `--model-size`: Size of the model (e.g., `tiny`, `base`, `small` for whisper; HuggingFace repo ID for `mlx` models, defaults: `mlx-community/whisper-large-v3-turbo` for `mlx-whisper`, `mlx-community/SenseVoiceSmall` for `mlx-sensevoice`).
 - `--output-file`: Path to save transcription (default: `transcription.txt`).
 - `--interval`: Buffer duration in seconds before driving inference (default: `5.0`).
+- `--source`: Audio source to record. `system` (default) for system audio output via ScreenCaptureKit, or `mic` for system audio input (microphone) via sounddevice.
 
 Example:
 ```bash

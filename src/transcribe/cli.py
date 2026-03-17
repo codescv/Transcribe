@@ -7,7 +7,7 @@ import os
 from Foundation import NSRunLoop, NSDate
 from transcribe.model.model import get_model, download_model_files
 from transcribe.audio.vad import VADTracker
-from transcribe.audio.recorder import ScreenAudioRecorder
+from transcribe.audio.recorder import get_recorder
 from transcribe.text_utils import remove_overlap
 
 
@@ -105,6 +105,7 @@ def start(
     save_audio: str = typer.Option(None, help="Save raw audio to specified file"),
     summary: str = typer.Option(None, help="Save summary using Gemini to this file path"),
     timestamp: bool = typer.Option(False, "--timestamp/--no-timestamp", help="Include timestamp in output file"),
+    source: str = typer.Option("system", help="Audio source: system (output) or mic (input)"),
 ):
     """
     Start capturing screen audio and transcribing.
@@ -130,8 +131,8 @@ def start(
         print(f"Warning/Error during model pre-download: {e}")
         print("Will attempt to proceed with loading later...")
 
-    # 1. Initialize & Start Recorder FIRST (avoid Metal conflict during SCK setup)
-    recorder = ScreenAudioRecorder.alloc().init()
+    # 1. Initialize & Start Recorder
+    recorder = get_recorder(source)
     recorder.start()
 
     # 2. Start Worker (Loads model inside on background thread)
