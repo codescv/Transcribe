@@ -5,7 +5,7 @@ import numpy as np
 from queue import Empty
 import os
 from Foundation import NSRunLoop, NSDate
-from transcribe.model.model import get_model
+from transcribe.model.model import get_model, download_model_files
 from transcribe.audio.vad import VADTracker
 from transcribe.audio.recorder import ScreenAudioRecorder
 from transcribe.text_utils import remove_overlap
@@ -120,6 +120,15 @@ def start(
         model_size = "mlx-community/whisper-large-v3-turbo"
     elif model_type.lower() == "mlx-sensevoice" and model_size == "base":
         model_size = "mlx-community/SenseVoiceSmall"
+
+    # 0. Download/Verify Model BEFORE starting recorder to avoid concurrent download/recording issues
+    # and ensure content is ready to transcribe immediately.
+    # Uses try-except to allow running offline if already cached.
+    try:
+        download_model_files(model_type, model_size)
+    except Exception as e:
+        print(f"Warning/Error during model pre-download: {e}")
+        print("Will attempt to proceed with loading later...")
 
     # 1. Initialize & Start Recorder FIRST (avoid Metal conflict during SCK setup)
     recorder = ScreenAudioRecorder.alloc().init()

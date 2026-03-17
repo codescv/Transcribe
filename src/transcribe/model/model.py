@@ -113,7 +113,27 @@ class MLXSenseVoiceModel(ASRModel):
         return result.text.strip()
 
 
+def download_model_files(model_type: str, model_size: str) -> None:
+    """
+    Download/verify model files from remote repository without loading to memory/Metal.
+    """
+    print(f"Downloading/Verifying {model_type} model ({model_size}) in background (if needed)...")
+    if model_type.lower() == "whisper":
+        from faster_whisper import download_model
+        download_model(model_size)
+    elif model_type.lower() == "mlx-whisper":
+        from huggingface_hub import snapshot_download
+        snapshot_download(repo_id=model_size)
+    elif model_type.lower() in ["mlx-sensevoice", "sensevoice"]:
+        from mlx_audio.utils import get_model_path
+        get_model_path(model_size)
+    else:
+        # We don't raise here if it might just be local paths or not supported but we can warn
+        # Actually raising is safer if they pass nonsense
+        raise ValueError(f"Unknown model type for download: {model_type}")
+
 def get_model(model_type: str = "whisper", **kwargs) -> ASRModel:
+
     if model_type.lower() == "whisper":
         return FasterWhisperModel(**kwargs)
     elif model_type.lower() == "mlx-whisper":
