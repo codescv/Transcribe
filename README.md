@@ -22,11 +22,18 @@ A macOS application that monitors system audio and transcribes it locally using 
 
 ## Usage
 
-Start transcribing system audio:
+### GUI (Recommended)
+Start the graphical interface:
+```bash
+uv run transcribe-gui
+```
 
+### CLI
+Start transcribing via command line:
 ```bash
 uv run transcribe start
 ```
+
 
 ### Options
 - `--model-type`: Choose model backend: `whisper` (default), `mlx-whisper`, or `mlx-sensevoice` (SenseVoice-Small).

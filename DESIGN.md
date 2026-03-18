@@ -39,11 +39,11 @@ graph TD
 
 
 
-### 3. CLI & Orchestration (`src/transcribe/cli.py`)
-*   **Framework**: `typer`.
-*   **Features**:
-    *   `transcribe start`: Start monitoring and transcribing.
-    *   Options: `--model-type [whisper|mlx-whisper]`, `--model-size SIZE`, `--output-file PATH`, `--interval INTERVAL`.
+### 3. Orchestration (`src/transcribe/core.py`, `cli.py`, `gui.py`)
+*   **Core Logic (`core.py`)**: Houses `transcription_worker` and `summary_worker` which manage the background execution flow, decoupling backend processing from display logic.
+*   **CLI (`cli.py`)**: Driven by `typer`. Handles commands for starting transcription logs to consoles.
+*   **GUI (`gui.py`)**: Powered by `customtkinter` for a modern interface. Extends options with dropdowns, toggle buttons, dynamic custom inputs regarding summary prompts, and readable render controls.
+
 
 
 ## Data Flow

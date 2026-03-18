@@ -1,7 +1,7 @@
 import os
 from google import genai
 
-def generate_summary(text: str) -> str:
+def generate_summary(text: str, custom_prompt: str = None) -> str:
     """
     Generate a summary of the given text using Gemini API.
     Splits text if it exceeds max_chars to avoid context/lost-in-middle issues.
@@ -32,10 +32,17 @@ def generate_summary(text: str) -> str:
         # 2. Summarize each chunk
         summaries = []
         for i, chunk in enumerate(chunks):
+            if custom_prompt:
+                instruction = custom_prompt
+            else:
+                instruction = (
+                    "You are an expert summarizer. Please provide a concise summary of the following transcription segment. "
+                    "Identify the main topics discussed and highlight any key points or actions. "
+                    "Use clear headings and bullet points where appropriate."
+                )
+            
             prompt = (
-                "You are an expert summarizer. Please provide a concise summary of the following transcription segment. "
-                "Identify the main topics discussed and highlight any key points or actions. "
-                "Use clear headings and bullet points where appropriate.\n\n"
+                f"{instruction}\n\n"
                 "**Important**: The output language must be the same as the transcription.\n"
                 f"Transcription Segment {i+1}/{len(chunks)}:\n"
                 f"{chunk}"
@@ -52,11 +59,18 @@ def generate_summary(text: str) -> str:
             
         # 4. Combine multiple summaries into a single cohesive digest
         combined_text = "\n\n=== Segment Summary ===\n\n".join(summaries)
+        if custom_prompt:
+            combine_instruction = f"Consolidate the following summaries using these guidelines: {custom_prompt}"
+        else:
+            combine_instruction = (
+                "You are an expert summarizer. Below are summaries of individual segments of a larger transcription. "
+                "Please consolidate them into a single, cohesive overall summary. "
+                "Organize by main topics or chronological order of topics discussed. "
+                "Use clear headings and bullet points."
+            )
+            
         combine_prompt = (
-            "You are an expert summarizer. Below are summaries of individual segments of a larger transcription. "
-            "Please consolidate them into a single, cohesive overall summary. "
-            "Organize by main topics or chronological order of topics discussed. "
-            "Use clear headings and bullet points.\n\n"
+            f"{combine_instruction}\n\n"
             "**Important**: The output language must be the same as the summaries.\n"
             "Segment Summaries:\n"
             f"{combined_text}"
@@ -70,7 +84,7 @@ def generate_summary(text: str) -> str:
     except Exception as e:
         return f"Error generating summary: {e}"
 
-def generate_incremental_summary(prev_summary: str, incremental_text: str) -> str:
+def generate_incremental_summary(prev_summary: str, incremental_text: str, custom_prompt: str = None) -> str:
     """
     Update the previous summary with the new transcription segment using Gemini API.
     """
@@ -82,19 +96,31 @@ def generate_incremental_summary(prev_summary: str, incremental_text: str) -> st
         
         if not prev_summary:
             # First time, do a normal summary
+            if custom_prompt:
+                instruction = custom_prompt
+            else:
+                instruction = (
+                    "You are an expert summarizer. Please provide a concise summary of the following transcription segment. "
+                    "Identify the main topics discussed and highlight any key points or actions. "
+                    "Use clear headings and bullet points where appropriate."
+                )
             prompt = (
-                "You are an expert summarizer. Please provide a concise summary of the following transcription segment. "
-                "Identify the main topics discussed and highlight any key points or actions. "
-                "Use clear headings and bullet points where appropriate.\n\n"
+                f"{instruction}\n\n"
                 "**Important**: The output language must be the same as the transcription.\n"
                 f"Transcription Segment:\n{incremental_text}"
             )
         else:
+            if custom_prompt:
+                instruction = f"Update the summary using these guidelines: {custom_prompt}"
+            else:
+                instruction = (
+                    "You are an expert summarizer. Below is a previous summary of a conversation and a new segment of transcription that occurred after it. "
+                    "Please update and consolidate them into a single, cohesive overall summary that accurately reflects the full discussion to this point. "
+                    "Organize by main topics or chronological order of topics discussed. "
+                    "Use clear headings and bullet points."
+                )
             prompt = (
-                "You are an expert summarizer. Below is a previous summary of a conversation and a new segment of transcription that occurred after it. "
-                "Please update and consolidate them into a single, cohesive overall summary that accurately reflects the full discussion to this point. "
-                "Organize by main topics or chronological order of topics discussed. "
-                "Use clear headings and bullet points.\n\n"
+                f"{instruction}\n\n"
                 "**Important**: The output language must be the same as the inputs.\n\n"
                 "=== Previous Summary ===\n"
                 f"{prev_summary}\n\n"
