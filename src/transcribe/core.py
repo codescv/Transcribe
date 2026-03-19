@@ -71,7 +71,11 @@ def transcription_worker(
                             clean_text = remove_overlap(prev_text, text)
                             if clean_text:
                                 if text_queue is not None:
-                                    text_queue.put(clean_text)
+                                    if len(clean_text) - len(set(clean_text)) > 50:
+                                        # garbage text is usually repeated a lot of times
+                                        print('drop possible garbage text:', clean_text)
+                                    else:
+                                        text_queue.put(clean_text)
                                 if summary_interval <= 0:
                                     print(f"[Captured]: {clean_text}")
                                 if f:
@@ -147,6 +151,8 @@ def summary_worker(
                     break
             
             incremental_text = " ".join(texts).strip()
+
+            print('incremental text:', incremental_text, 'current summary:', current_summary)
             
             if incremental_text:
                 current_prompt = custom_prompt() if callable(custom_prompt) else custom_prompt
