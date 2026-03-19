@@ -43,11 +43,10 @@ transcribe-gui
 ### CLI
 Start transcribing via command line:
 ```bash
-transcribe [options]
-```
-*(If installed via Clone source, use `uv run transcribe start` instead)*
+transcribe options
 ```
 
+*(If installed via Clone source, use `uv run transcribe start` instead)*
 
 ### Options
 - `--model-type`: Choose model backend: `whisper` (default), `mlx-whisper`, or `mlx-sensevoice` (SenseVoice-Small).
