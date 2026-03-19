@@ -42,7 +42,7 @@ graph TD
 ### 3. Orchestration (`src/transcribe/core.py`, `cli.py`, `gui.py`)
 *   **Core Logic (`core.py`)**: Houses `transcription_worker` and `summary_worker` which manage the background execution flow, decoupling backend processing from display logic.
 *   **CLI (`cli.py`)**: Driven by `typer`. Handles commands for starting transcription logs to consoles.
-*   **GUI (`gui.py`)**: Powered by `customtkinter` for a modern interface. Extends options with dropdowns, toggle buttons, dynamic custom inputs regarding summary prompts, and readable render controls.
+*   **GUI (`gui.py`)**: Powered by `PyQt6` for a modern interface and native markdown support. Extends options with dropdowns, toggle buttons, dynamic custom inputs regarding summary prompts, and readable render controls.
 
 
 

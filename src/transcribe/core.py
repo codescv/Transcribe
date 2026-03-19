@@ -152,7 +152,7 @@ def summary_worker(
             
             incremental_text = " ".join(texts).strip()
 
-            print('incremental text:', incremental_text, 'current summary:', current_summary)
+            print('incremental text:', incremental_text, 'current summary:', len(current_summary))
             
             if incremental_text:
                 current_prompt = custom_prompt() if callable(custom_prompt) else custom_prompt

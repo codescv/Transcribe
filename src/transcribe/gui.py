@@ -1,28 +1,33 @@
-import customtkinter as ctk
-import tkinter as tk
-from tkinter import filedialog
-import threading
+import sys
 import os
-import time
+import threading
 from queue import Queue
 from Foundation import NSRunLoop, NSDate
+
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QGridLayout, QFrame, QLabel, QPushButton, QLineEdit, QComboBox,
+    QTextEdit, QFileDialog, QMessageBox
+)
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
+from PyQt6.QtGui import QFont
 
 from transcribe.core import transcription_worker, summary_worker
 from transcribe.audio.recorder import get_recorder
 from transcribe.model.model import download_model_files
 from transcribe.summarize import generate_summary
 
-# Select color theme
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+# Signal emitter for thread safety
+class WorkerSignals(QObject):
+    status_updated = pyqtSignal(str, str) # text, color_name
+    summary_updated = pyqtSignal(str)
 
-class TranscriptionApp(ctk.CTk):
+class TranscriptionApp(QMainWindow):
     def __init__(self):
         super().__init__()
-
-        self.title("Screen Audio Transcriber")
-        self.geometry("1000x700")
-
+        self.setWindowTitle("Screen Audio Transcriber")
+        self.resize(1000, 700)
+        
         # State
         self.recorder = None
         self.worker_thread = None
@@ -31,131 +36,125 @@ class TranscriptionApp(ctk.CTk):
         self.text_queue = None
         self.is_running = False
         self.current_summary = ""
-
+        
+        self.signals = WorkerSignals()
+        self.signals.status_updated.connect(self.update_status)
+        self.signals.summary_updated.connect(self.update_summary_ui)
+        
         self.setup_ui()
-
+        
     def setup_ui(self):
-        # Grid configuration
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-
-        # === Sidebar (Settings) ===
-        self.sidebar = ctk.CTkFrame(self, width=250, corner_radius=0)
-        self.sidebar.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        self.sidebar.grid_rowconfigure(15, weight=1) # Spacer
-
-
-        self.title_label = ctk.CTkLabel(self.sidebar, text="Settings", font=ctk.CTkFont(size=20, weight="bold"))
-        self.title_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
-
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        main_layout = QHBoxLayout(main_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # === Sidebar ===
+        self.sidebar = QFrame()
+        self.sidebar.setFrameShape(QFrame.Shape.StyledPanel)
+        self.sidebar.setFixedWidth(250)
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        main_layout.addWidget(self.sidebar)
+        
+        # Title
+        settings_title = QLabel("Settings")
+        font = QFont()
+        font.setPointSize(16)
+        font.setBold(True)
+        settings_title.setFont(font)
+        sidebar_layout.addWidget(settings_title)
+        
         # Model Type
-        self.model_type_label = ctk.CTkLabel(self.sidebar, text="Model Type")
-        self.model_type_label.grid(row=1, column=0, padx=20, pady=(10, 0), sticky="w")
-        self.model_type_menu = ctk.CTkOptionMenu(
-            self.sidebar, 
-            values=["mlx-whisper", "whisper", "mlx-sensevoice"],
-            command=self.on_model_type_change
-        )
-
-        self.model_type_menu.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
-
-        # Model Size/Repo
-        self.model_size_label = ctk.CTkLabel(self.sidebar, text="Size / Repo ID")
-        self.model_size_label.grid(row=3, column=0, padx=20, pady=(10, 0), sticky="w")
-        self.model_size_entry = ctk.CTkEntry(self.sidebar, placeholder_text="mlx-community/whisper-large-v3-turbo")
-        self.model_size_entry.grid(row=4, column=0, padx=20, pady=(0, 10), sticky="ew")
-        self.model_size_entry.insert(0, "mlx-community/whisper-large-v3-turbo") # Default
-
-
+        sidebar_layout.addWidget(QLabel("Model Type"))
+        self.model_type_menu = QComboBox()
+        self.model_type_menu.addItems(["mlx-whisper", "whisper", "mlx-sensevoice"])
+        self.model_type_menu.currentTextChanged.connect(self.on_model_type_change)
+        sidebar_layout.addWidget(self.model_type_menu)
+        
+        # Model Size
+        sidebar_layout.addWidget(QLabel("Size / Repo ID"))
+        self.model_size_entry = QLineEdit("mlx-community/whisper-large-v3-turbo")
+        sidebar_layout.addWidget(self.model_size_entry)
+        
         # Source
-        self.source_label = ctk.CTkLabel(self.sidebar, text="Audio Source")
-        self.source_label.grid(row=5, column=0, padx=20, pady=(10, 0), sticky="w")
-        self.source_menu = ctk.CTkOptionMenu(self.sidebar, values=["system", "mic"])
-        self.source_menu.grid(row=6, column=0, padx=20, pady=(0, 10), sticky="ew")
-
-        # Interval (ASR)
-        self.interval_label = ctk.CTkLabel(self.sidebar, text="ASR Interval (s)")
-        self.interval_label.grid(row=7, column=0, padx=20, pady=(10, 0), sticky="w")
-        self.interval_entry = ctk.CTkEntry(self.sidebar, width=100)
-        self.interval_entry.grid(row=8, column=0, padx=20, pady=(0, 10), sticky="w")
-        self.interval_entry.insert(0, "5.0")
-
-        # Summary interval
-        self.summary_interval_label = ctk.CTkLabel(self.sidebar, text="Summary Interval (s)")
-        self.summary_interval_label.grid(row=9, column=0, padx=20, pady=(10, 0), sticky="w")
-        self.summary_interval_entry = ctk.CTkEntry(self.sidebar, width=100)
-        self.summary_interval_entry.grid(row=10, column=0, padx=20, pady=(0, 10), sticky="w")
-        self.summary_interval_entry.insert(0, "60.0") # Default continuous
-
-
+        sidebar_layout.addWidget(QLabel("Audio Source"))
+        self.source_menu = QComboBox()
+        self.source_menu.addItems(["system", "mic"])
+        sidebar_layout.addWidget(self.source_menu)
+        
+        # Intervals
+        sidebar_layout.addWidget(QLabel("ASR Interval (s)"))
+        self.interval_entry = QLineEdit("5.0")
+        sidebar_layout.addWidget(self.interval_entry)
+        
+        sidebar_layout.addWidget(QLabel("Summary Interval (s)"))
+        self.summary_interval_entry = QLineEdit("60.0")
+        sidebar_layout.addWidget(self.summary_interval_entry)
+        
+        sidebar_layout.addStretch() # Spacer
+        
         # === Main Panel ===
-        self.main_panel = ctk.CTkFrame(self, corner_radius=10)
-        self.main_panel.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
-        self.main_panel.grid_columnconfigure(0, weight=1)
-        self.main_panel.grid_rowconfigure(2, weight=1) # Summary area expands
-
+        main_panel = QFrame()
+        main_panel_layout = QVBoxLayout(main_panel)
+        main_layout.addWidget(main_panel)
+        
         # Controls
-        self.control_frame = ctk.CTkFrame(self.main_panel, fg_color="transparent")
-        self.control_frame.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
+        controls_frame = QFrame()
+        controls_layout = QHBoxLayout(controls_frame)
+        main_panel_layout.addWidget(controls_frame)
         
-        self.start_btn = ctk.CTkButton(
-            self.control_frame, 
-            text="Start Transcription", 
-            command=self.toggle_start,
-            fg_color="#28a745", 
-            hover_color="#218838"
-        )
-        self.start_btn.pack(side="left", padx=0)
-
-        self.status_label = ctk.CTkLabel(self.control_frame, text="Status: Idle", text_color="gray")
-        self.status_label.pack(side="left", padx=20)
-
-        # Custom Prompt
-        self.prompt_frame = ctk.CTkFrame(self.main_panel, fg_color="transparent")
-        self.prompt_frame.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
+        self.start_btn = QPushButton("Start Transcription")
+        self.start_btn.clicked.connect(self.toggle_start)
+        self.start_btn.setStyleSheet("background-color: #28a745; color: white;")
+        controls_layout.addWidget(self.start_btn)
         
-        self.prompt_label = ctk.CTkLabel(self.prompt_frame, text="Custom Summary Prompt:")
-        self.prompt_label.pack(anchor="w")
+        self.status_label = QLabel("Status: Idle")
+        controls_layout.addWidget(self.status_label)
+        controls_layout.addStretch()
         
-        self.prompt_entry = ctk.CTkEntry(self.prompt_frame, placeholder_text="e.g., Summarize in bullet points, focus on actions...")
-        self.prompt_entry.pack(fill="x", pady=(2, 0))
-
+        # Prompt
+        prompt_frame = QFrame()
+        prompt_layout = QVBoxLayout(prompt_frame)
+        main_panel_layout.addWidget(prompt_frame)
+        
+        prompt_layout.addWidget(QLabel("Custom Summary Prompt:"))
+        self.prompt_entry = QLineEdit()
+        self.prompt_entry.setPlaceholderText("e.g., Summarize in bullet points, focus on actions...")
+        prompt_layout.addWidget(self.prompt_entry)
+        
         # Summary Display
-        self.summary_frame = ctk.CTkFrame(self.main_panel)
-        self.summary_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
-        self.summary_frame.grid_columnconfigure(0, weight=1)
-        self.summary_frame.grid_rowconfigure(1, weight=1)
-
-        self.summary_title = ctk.CTkLabel(self.summary_frame, text="Summary (Markdown)", font=ctk.CTkFont(weight="bold"))
-        self.summary_title.grid(row=0, column=0, padx=10, pady=5, sticky="w")
-
-        self.summary_text = ctk.CTkTextbox(self.summary_frame, wrap="word")
-        self.summary_text.grid(row=1, column=0, padx=10, pady=5, sticky="nsew")
-        self.summary_text.configure(state="disabled")
-
-        # Actions Panel
-        self.actions_frame = ctk.CTkFrame(self.main_panel, fg_color="transparent")
-        self.actions_frame.grid(row=3, column=0, padx=20, pady=20, sticky="ew")
-
-        self.save_btn = ctk.CTkButton(self.actions_frame, text="Save Summary", command=self.save_summary)
-        self.save_btn.pack(side="right")
+        summary_frame = QFrame()
+        summary_layout = QVBoxLayout(summary_frame)
+        main_panel_layout.addWidget(summary_frame)
+        
+        summary_title = QLabel("Summary (Markdown)")
+        font = QFont()
+        font.setBold(True)
+        summary_title.setFont(font)
+        summary_layout.addWidget(summary_title)
+        
+        self.summary_text = QTextEdit()
+        self.summary_text.setReadOnly(True)
+        summary_layout.addWidget(self.summary_text)
+        
+        # Save Button
+        save_layout = QHBoxLayout()
+        main_panel_layout.addLayout(save_layout)
+        save_layout.addStretch()
+        self.save_btn = QPushButton("Save Summary")
+        self.save_btn.clicked.connect(self.save_summary)
+        save_layout.addWidget(self.save_btn)
 
     def on_model_type_change(self, value):
-        # Update default size based on type to help user
-        current_size = self.model_size_entry.get()
+        current_size = self.model_size_entry.text()
         defaults = {
             "whisper": "base",
             "mlx-whisper": "mlx-community/whisper-large-v3-turbo",
             "mlx-sensevoice": "mlx-community/SenseVoiceSmall"
         }
         if current_size in defaults.values() or current_size == "":
-            self.model_size_entry.delete(0, tk.END)
-            self.model_size_entry.insert(0, defaults.get(value, "base"))
-        elif value == "whisper" and current_size not in ["base", "tiny", "small", "medium", "large"]:
-            # Fallback for whisper sizes just in case
-            pass
-        # No else, if user typed custom repo, we leave it
-
+            self.model_size_entry.setText(defaults.get(value, "base"))
 
     def toggle_start(self):
         if self.is_running:
@@ -164,41 +163,43 @@ class TranscriptionApp(ctk.CTk):
             self.start_transcribing()
 
     def start_transcribing(self):
-        # Get config
-        model_type = self.model_type_menu.get()
-        model_size = self.model_size_entry.get()
-        source = self.source_menu.get()
+        model_type = self.model_type_menu.currentText()
+        model_size = self.model_size_entry.text()
+        source = self.source_menu.currentText()
         
         try:
-            interval = float(self.interval_entry.get())
-            summary_interval = float(self.summary_interval_entry.get())
+            interval = float(self.interval_entry.text())
+            summary_interval = float(self.summary_interval_entry.text())
         except ValueError:
-            self.update_status("Error: Invalid interval numbers", "red")
+            self.signals.status_updated.emit("Error: Invalid interval numbers", "red")
             return
 
         self.is_running = True
-        self.start_btn.configure(text="Stop Transcription", fg_color="#dc3545", hover_color="#c82333")
-        self.update_status("Starting...", "yellow")
-        self.summary_text.configure(state="normal")
-        self.summary_text.delete("1.0", tk.END)
-        self.summary_text.configure(state="disabled")
+        self.start_btn.setText("Stop Transcription")
+        self.start_btn.setStyleSheet("background-color: #dc3545; color: white;")
+        self.signals.status_updated.emit("Starting...", "orange")
+        self.summary_text.clear()
         self.current_summary = ""
 
-        # Start background thread
+        # Timer for NSRunLoop
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.run_ns_loop_tick)
+        self.timer.start(100)
+
         threading.Thread(target=self.run_background_process, args=(model_type, model_size, source, interval, summary_interval), daemon=True).start()
 
     def run_background_process(self, model_type, model_size, source, interval, summary_interval):
         try:
-            self.update_status("Downloading/Verifying Model...", "yellow")
+            self.signals.status_updated.emit("Downloading/Verifying Model...", "orange")
             download_model_files(model_type, model_size)
             
-            self.update_status("Initializing Recorder...", "yellow")
+            self.signals.status_updated.emit("Initializing Recorder...", "orange")
             self.recorder = get_recorder(source)
             self.recorder.start()
 
             self.text_queue = Queue()
+            self.signals.status_updated.emit("Starting Workers...", "orange")
             
-            self.update_status("Starting Workers...", "yellow")
             self.worker_thread = threading.Thread(
                 target=transcription_worker,
                 args=(self.recorder, model_type, model_size, None, interval, None, False, self.text_queue, summary_interval),
@@ -208,45 +209,33 @@ class TranscriptionApp(ctk.CTk):
 
             if summary_interval > 0:
                 self.stop_summary_event = threading.Event()
-                custom_prompt = lambda: self.prompt_entry.get()
+                custom_prompt = lambda: self.prompt_entry.text()
                 
                 self.summary_thread = threading.Thread(
                     target=summary_worker,
-                    args=(self.text_queue, summary_interval, self.stop_summary_event, None, custom_prompt, self.update_summary_ui),
+                    args=(self.text_queue, summary_interval, self.stop_summary_event, None, custom_prompt, self.signals.summary_updated.emit),
                     daemon=True
                 )
                 self.summary_thread.start()
 
-            self.update_status("Recording & Transcribing", "green")
-            
-            # NSRunLoop is needed on the main thread usually or where SCK runs.
-            # However, in Tkinter, the main thread is the Tk event loop.
-            # ScreenCaptureKit requires a run loop. if get_recorder starts a thread that manages it, great.
-            # Let's assume get_recorder handles it as it did in CLI.
-            # Wait, in CLI, loop.runUntilDate_ was on the MAIN thread.
-            # If Tkinter runs its own loop, they might conflict, OR we need to run NSRunLoop periodically via tick.
-            # Let's use after() to run NSRunLoop tick.
-            self.run_ns_loop_tick()
-
+            self.signals.status_updated.emit("Recording & Transcribing", "green")
         except Exception as e:
-            self.update_status(f"Error: {e}", "red")
-            self.stop_transcribing()
+            self.signals.status_updated.emit(f"Error: {e}", "red")
+            # We should probably stop from here but need to call back to UI
+            self.signals.status_updated.emit("Stopped due to error", "red")
 
     def run_ns_loop_tick(self):
         if not self.is_running:
+            self.timer.stop()
             return
-            
-        # Run loop to process events (e.g. main thread dispatch for SCK)
         loop = NSRunLoop.currentRunLoop()
         loop.runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.1))
-        
-        # Schedule next tick
-        self.after(100, self.run_ns_loop_tick)
 
     def stop_transcribing(self):
         self.is_running = False
-        self.start_btn.configure(text="Start Transcription", fg_color="#28a745", hover_color="#218838")
-        self.update_status("Stopping...", "yellow")
+        self.start_btn.setText("Start Transcription")
+        self.start_btn.setStyleSheet("background-color: #28a745; color: white;")
+        self.signals.status_updated.emit("Stopping...", "orange")
 
         if self.stop_summary_event:
             self.stop_summary_event.set()
@@ -254,68 +243,62 @@ class TranscriptionApp(ctk.CTk):
         if self.recorder:
             self.recorder.stop()
 
-        # If continuous summary is off, generate one last summary on stop
-        summary_interval = float(self.summary_interval_entry.get())
+        try:
+            summary_interval = float(self.summary_interval_entry.text())
+        except ValueError:
+            summary_interval = 0
+
         if summary_interval <= 0 and self.text_queue:
-            self.update_status("Generating Final Summary...", "yellow")
-            threading.Thread(target=self.generate_final_summary, daemon=True).start()
+             self.signals.status_updated.emit("Generating Final Summary...", "orange")
+             threading.Thread(target=self.generate_final_summary, daemon=True).start()
         else:
-            self.update_status("Stopped", "gray")
+             self.signals.status_updated.emit("Stopped", "gray")
 
     def generate_final_summary(self):
         try:
-            # Collect all text from queue
             texts = []
             while not self.text_queue.empty():
                 texts.append(self.text_queue.get_nowait())
             
             full_text = " ".join(texts).strip()
             if full_text:
-                custom_prompt = self.prompt_entry.get()
+                custom_prompt = self.prompt_entry.text()
                 summary = generate_summary(full_text, custom_prompt=custom_prompt if custom_prompt else None)
-                self.update_summary_ui(summary)
-                self.update_status("Stopped (Summary Generated)", "gray")
+                self.signals.summary_updated.emit(summary)
+                self.signals.status_updated.emit("Stopped (Summary Generated)", "gray")
             else:
-                self.update_status("Stopped (No content)", "gray")
+                self.signals.status_updated.emit("Stopped (No content)", "gray")
         except Exception as e:
-            self.update_status(f"Summary Error: {e}", "red")
+            self.signals.status_updated.emit(f"Summary Error: {e}", "red")
 
     def update_status(self, text, color="gray"):
-        # Thread-safe UI update
-        self.after(0, lambda: self.status_label.configure(text=f"Status: {text}", text_color=color))
+        self.status_label.setText(f"Status: {text}")
+        # Simple color mapping
+        colors = {"green": "green", "orange": "orange", "red": "red", "gray": "gray"}
+        self.status_label.setStyleSheet(f"color: {colors.get(color, 'black')}")
 
     def update_summary_ui(self, summary):
-        # Thread-safe UI update
-        def do_update():
-            self.summary_text.configure(state="normal")
-            self.summary_text.delete("1.0", tk.END)
-            self.summary_text.insert("1.0", summary)
-            self.summary_text.configure(state="disabled")
-            self.current_summary = summary
-            
-        self.after(0, do_update)
+        self.summary_text.setMarkdown(summary)
+        self.current_summary = summary
 
     def save_summary(self):
         if not self.current_summary:
-             # Notify or flash button
              return
-             
-        filepath = filedialog.asksaveasfilename(
-            defaultextension=".md",
-            filetypes=[("Markdown", "*.md"), ("Text files", "*.txt"), ("All files", "*.*")]
+        filepath, _ = QFileDialog.getSaveFileName(
+             self, "Save Summary", "", "Markdown (*.md);;Text files (*.txt);;All files (*.*)"
         )
-        
         if filepath:
-            try:
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(self.current_summary)
-                # Flash success?
-            except Exception as e:
-                 self.update_status(f"Save failed: {e}", "red")
+             try:
+                 with open(filepath, "w", encoding="utf-8") as f:
+                     f.write(self.current_summary)
+             except Exception as e:
+                 QMessageBox.warning(self, "Error", f"Save failed: {e}")
 
 def main():
-    app = TranscriptionApp()
-    app.mainloop()
+    app = QApplication(sys.argv)
+    window = TranscriptionApp()
+    window.show()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
     main()
