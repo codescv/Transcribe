@@ -7,6 +7,9 @@ A macOS application that monitors system audio and transcribes it locally using 
 - **Local AI**: Transcribes using `faster-whisper` on your machine.
 - **Multi-language**: Supports both English and Chinese auto-detection/transcription.
 
+## Screenshots
+![screenshot](images/screenshot-transcribe.png)
+
 ## Requirements
 - macOS 12.3 or higher (for ScreenCaptureKit integration)
 - Python 3.12+
@@ -14,6 +17,14 @@ A macOS application that monitors system audio and transcribes it locally using 
 
 ## Installation
 
+### Recommended: Install with `uv tool`
+You can install and run the application directly using `uv` without cloning the source tree:
+```bash
+uv tool install git+https://github.com/codescv/Transcribe.git
+```
+This makes the `transcribe-gui` and `transcribe` commands available globally in your path environment.
+
+### Developer Installation (Clone Source)
 1. Clone or download this repository.
 2. Install dependencies with `uv`:
    ```bash
@@ -25,13 +36,16 @@ A macOS application that monitors system audio and transcribes it locally using 
 ### GUI (Recommended)
 Start the graphical interface:
 ```bash
-uv run transcribe-gui
+transcribe-gui
 ```
+*(If installed via Clone source, use `uv run transcribe-gui` instead)*
 
 ### CLI
 Start transcribing via command line:
 ```bash
-uv run transcribe start
+transcribe [options]
+```
+*(If installed via Clone source, use `uv run transcribe start` instead)*
 ```
 
 
@@ -46,7 +60,7 @@ uv run transcribe start
 
 Example:
 ```bash
-uv run transcribe start --model-size small --output-file my_meeting.txt
+transcribe --model-type mlx-whisper --source system --summary-output my_meeting_summary.txt
 ```
 
 ## Troubleshooting
