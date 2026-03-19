@@ -2,7 +2,7 @@ import sys
 import os
 import threading
 from queue import Queue
-from Foundation import NSRunLoop, NSDate
+from Foundation import NSRunLoop, NSDate, NSUserDefaults
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -17,16 +17,144 @@ from transcribe.audio.recorder import get_recorder
 from transcribe.model.model import download_model_files
 from transcribe.summarize import generate_summary
 
+def get_system_theme():
+    try:
+        style = NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle")
+        return style == "Dark"
+    except:
+        return False
+
+def get_stylesheet(is_dark):
+    bg = "#0B0F19" if is_dark else "#F3F4F6"
+    sidebar_bg = "#111827" if is_dark else "#FFFFFF"
+    panel_bg = "#111827" if is_dark else "#FFFFFF"
+    text = "#F9FAFB" if is_dark else "#111827"
+    secondary_text = "#9CA3AF" if is_dark else "#6B7280"
+    border = "#374151" if is_dark else "#E5E7EB"
+    input_bg = "#1F2937" if is_dark else "#F9FAFB"
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    arrow_path = os.path.join(current_dir, "resources", "arrow_dark.svg" if is_dark else "arrow_light.svg").replace("\\", "/")
+    
+    return f"""
+        QMainWindow {{
+            background-color: {bg};
+        }}
+        QLabel {{
+            color: {text};
+            font-size: 13px;
+        }}
+        QLabel#section_title {{
+            font-size: 18px;
+            font-weight: bold;
+            color: {text};
+        }}
+        QFrame#sidebar {{
+            background-color: {sidebar_bg};
+            border-radius: 16px;
+            border-right: 1px solid {border};
+        }}
+        QFrame#main_panel {{
+            background-color: {panel_bg};
+            border-radius: 16px;
+            border: 1px solid {border};
+        }}
+        QLineEdit, QComboBox {{
+            background-color: {input_bg};
+            color: {text};
+            border: 1px solid {border};
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 13px;
+        }}
+        QLineEdit:focus, QComboBox:focus {{
+            border: 1px solid #3B82F6;
+        }}
+        QComboBox::drop-down {{
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 30px;
+            border-left: 1px solid {border};
+            border-top-right-radius: 8px;
+            border-bottom-right-radius: 8px;
+            background-color: transparent;
+        }}
+        QComboBox::down-arrow {{
+            image: url({arrow_path});
+            width: 10px;
+            height: 6px;
+        }}
+        QComboBox QFrame {{
+            background-color: {panel_bg};
+            border: 1px solid {border};
+            border-radius: 8px;
+        }}
+        QComboBox QAbstractItemView {{
+            background-color: transparent;
+            color: {text};
+            padding: 4px;
+        }}
+        QComboBox QAbstractItemView::item {{
+            background-color: transparent;
+            color: {text};
+            padding: 8px;
+        }}
+        QComboBox QAbstractItemView::item:selected {{
+            background-color: #3B82F6;
+            color: white;
+        }}
+        QPushButton {{
+            background-color: #3B82F6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-weight: bold;
+            font-size: 13px;
+        }}
+        QPushButton:hover {{
+            background-color: #2563EB;
+        }}
+        QPushButton:pressed {{
+            background-color: #1D4ED8;
+        }}
+        QPushButton[state="start"] {{
+            background-color: #10B981;
+        }}
+        QPushButton[state="start"]:hover {{
+            background-color: #059669;
+        }}
+        QPushButton[state="stop"] {{
+            background-color: #EF4444;
+        }}
+        QPushButton[state="stop"]:hover {{
+            background-color: #DC2626;
+        }}
+        QTextEdit {{
+            background-color: {input_bg};
+            color: {text};
+            border: 1px solid {border};
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+        }}
+    """
+
 # Signal emitter for thread safety
 class WorkerSignals(QObject):
-    status_updated = pyqtSignal(str, str) # text, color_name
+    status_updated = pyqtSignal(str, str)
     summary_updated = pyqtSignal(str)
 
 class TranscriptionApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Screen Audio Transcriber")
-        self.resize(1000, 700)
+        self.resize(1100, 750)
+        
+        # Style
+        is_dark = get_system_theme()
+        self.setStyleSheet(get_stylesheet(is_dark))
         
         # State
         self.recorder = None
@@ -47,29 +175,31 @@ class TranscriptionApp(QMainWindow):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QHBoxLayout(main_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
         
         # === Sidebar ===
         self.sidebar = QFrame()
-        self.sidebar.setFrameShape(QFrame.Shape.StyledPanel)
-        self.sidebar.setFixedWidth(250)
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(260)
         sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(20, 25, 20, 25)
+        sidebar_layout.setSpacing(15)
         sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         main_layout.addWidget(self.sidebar)
         
         # Title
         settings_title = QLabel("Settings")
-        font = QFont()
-        font.setPointSize(16)
-        font.setBold(True)
-        settings_title.setFont(font)
+        settings_title.setObjectName("section_title")
         sidebar_layout.addWidget(settings_title)
+        sidebar_layout.addSpacing(10)
         
         # Model Type
         sidebar_layout.addWidget(QLabel("Model Type"))
         self.model_type_menu = QComboBox()
         self.model_type_menu.addItems(["mlx-whisper", "whisper", "mlx-sensevoice"])
         self.model_type_menu.currentTextChanged.connect(self.on_model_type_change)
+        self.model_type_menu.view().window().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         sidebar_layout.addWidget(self.model_type_menu)
         
         # Model Size
@@ -81,6 +211,7 @@ class TranscriptionApp(QMainWindow):
         sidebar_layout.addWidget(QLabel("Audio Source"))
         self.source_menu = QComboBox()
         self.source_menu.addItems(["system", "mic"])
+        self.source_menu.view().window().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         sidebar_layout.addWidget(self.source_menu)
         
         # Intervals
@@ -92,33 +223,45 @@ class TranscriptionApp(QMainWindow):
         self.summary_interval_entry = QLineEdit("60.0")
         sidebar_layout.addWidget(self.summary_interval_entry)
         
-        sidebar_layout.addStretch() # Spacer
+        sidebar_layout.addStretch()
         
         # === Main Panel ===
         main_panel = QFrame()
+        main_panel.setObjectName("main_panel")
         main_panel_layout = QVBoxLayout(main_panel)
+        main_panel_layout.setContentsMargins(25, 25, 25, 25)
+        main_panel_layout.setSpacing(20)
         main_layout.addWidget(main_panel)
         
         # Controls
         controls_frame = QFrame()
         controls_layout = QHBoxLayout(controls_frame)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
         main_panel_layout.addWidget(controls_frame)
         
         self.start_btn = QPushButton("Start Transcription")
+        self.start_btn.setProperty("state", "start")
         self.start_btn.clicked.connect(self.toggle_start)
-        self.start_btn.setStyleSheet("background-color: #28a745; color: white;")
         controls_layout.addWidget(self.start_btn)
         
         self.status_label = QLabel("Status: Idle")
+        self.status_label.setStyleSheet("font-style: italic; color: gray;")
         controls_layout.addWidget(self.status_label)
         controls_layout.addStretch()
         
         # Prompt
         prompt_frame = QFrame()
         prompt_layout = QVBoxLayout(prompt_frame)
+        prompt_layout.setContentsMargins(0, 0, 0, 0)
+        prompt_layout.setSpacing(8)
         main_panel_layout.addWidget(prompt_frame)
         
-        prompt_layout.addWidget(QLabel("Custom Summary Prompt:"))
+        prompt_title = QLabel("Custom Summary Prompt")
+        font = QFont()
+        font.setBold(True)
+        prompt_title.setFont(font)
+        prompt_layout.addWidget(prompt_title)
+        
         self.prompt_entry = QLineEdit()
         self.prompt_entry.setPlaceholderText("e.g., Summarize in bullet points, focus on actions...")
         prompt_layout.addWidget(self.prompt_entry)
@@ -126,12 +269,12 @@ class TranscriptionApp(QMainWindow):
         # Summary Display
         summary_frame = QFrame()
         summary_layout = QVBoxLayout(summary_frame)
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        summary_layout.setSpacing(8)
         main_panel_layout.addWidget(summary_frame)
         
-        summary_title = QLabel("Summary (Markdown)")
-        font = QFont()
-        font.setBold(True)
-        summary_title.setFont(font)
+        summary_title = QLabel("Summary")
+        summary_title.setObjectName("section_title")
         summary_layout.addWidget(summary_title)
         
         self.summary_text = QTextEdit()
@@ -176,7 +319,10 @@ class TranscriptionApp(QMainWindow):
 
         self.is_running = True
         self.start_btn.setText("Stop Transcription")
-        self.start_btn.setStyleSheet("background-color: #dc3545; color: white;")
+        self.start_btn.setProperty("state", "stop")
+        self.start_btn.style().unpolish(self.start_btn)
+        self.start_btn.style().polish(self.start_btn)
+        
         self.signals.status_updated.emit("Starting...", "orange")
         self.summary_text.clear()
         self.current_summary = ""
@@ -221,7 +367,6 @@ class TranscriptionApp(QMainWindow):
             self.signals.status_updated.emit("Recording & Transcribing", "green")
         except Exception as e:
             self.signals.status_updated.emit(f"Error: {e}", "red")
-            # We should probably stop from here but need to call back to UI
             self.signals.status_updated.emit("Stopped due to error", "red")
 
     def run_ns_loop_tick(self):
@@ -234,7 +379,10 @@ class TranscriptionApp(QMainWindow):
     def stop_transcribing(self):
         self.is_running = False
         self.start_btn.setText("Start Transcription")
-        self.start_btn.setStyleSheet("background-color: #28a745; color: white;")
+        self.start_btn.setProperty("state", "start")
+        self.start_btn.style().unpolish(self.start_btn)
+        self.start_btn.style().polish(self.start_btn)
+        
         self.signals.status_updated.emit("Stopping...", "orange")
 
         if self.stop_summary_event:
@@ -273,9 +421,8 @@ class TranscriptionApp(QMainWindow):
 
     def update_status(self, text, color="gray"):
         self.status_label.setText(f"Status: {text}")
-        # Simple color mapping
-        colors = {"green": "green", "orange": "orange", "red": "red", "gray": "gray"}
-        self.status_label.setStyleSheet(f"color: {colors.get(color, 'black')}")
+        colors = {"green": "#10B981", "orange": "#F59E0B", "red": "#EF4444", "gray": "#6B7280"}
+        self.status_label.setStyleSheet(f"color: {colors.get(color, '#6B7280')}; font-style: italic;")
 
     def update_summary_ui(self, summary):
         self.summary_text.setMarkdown(summary)
