@@ -12,8 +12,6 @@ wheels/
 # macos
 .DS_Store
 
-uv.lock
-
 # temp output files
 transcription.txt
 *.pcm
